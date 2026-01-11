@@ -24,7 +24,7 @@ Claude Code Todo Viewer is an Electron-based desktop app that monitors `~/.claud
 
 ## Screenshots
 
-*Coming soon*
+<img width="961" height="696" alt="スクリーンショット 2026-01-11 11 00 24" src="https://github.com/user-attachments/assets/14eff529-26f4-4ce1-809b-8c08156a2efd" />
 
 ## Download
 
