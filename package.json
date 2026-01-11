@@ -12,7 +12,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/oowadatomohiro/cc-plan-viewer.git"
+    "url": "https://github.com/tomohiro-owada/cc-plan-viewer.git"
   },
   "keywords": [
     "claude",
@@ -31,6 +31,7 @@
   "build": {
     "appId": "com.oowadatomohiro.cc-plan-viewer",
     "productName": "Claude Code Todo Viewer",
+    "publish": null,
     "files": [
       "main.js",
       "preload.js",
