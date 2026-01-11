@@ -1,0 +1,61 @@
+{
+  "name": "cc-plan-viewer",
+  "version": "1.0.0",
+  "description": "Real-time todo progress viewer for Claude Code",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oowadatomohiro/cc-plan-viewer.git"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "todo",
+    "progress",
+    "viewer",
+    "electron"
+  ],
+  "author": "oowadatomohiro",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^39.2.7",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.oowadatomohiro.cc-plan-viewer",
+    "productName": "Claude Code Todo Viewer",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "icon.png",
+      "icon.icns"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ],
+      "icon": "icon.icns",
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "icon.png",
+      "category": "Development"
+    }
+  }
+}

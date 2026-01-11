@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Code Todo Viewer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .app {
+      display: flex;
+      height: 100%;
+      padding-top: 38px;
+    }
+
+    .drag-region {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 38px;
+      -webkit-app-region: drag;
+      background: #1e1e1e;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 280px;
+      background: #252525;
+      border-right: 1px solid #333;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: width 0.2s, min-width 0.2s;
+      position: relative;
+    }
+
+    .sidebar.collapsed {
+      width: 0;
+      min-width: 0;
+      border-right: none;
+      overflow: hidden;
+    }
+
+    .sidebar.collapsed .sidebar-header,
+    .sidebar.collapsed .session-list {
+      display: none;
+    }
+
+    .sidebar-toggle {
+      position: fixed;
+      top: 50%;
+      left: 268px;
+      transform: translateY(-50%);
+      width: 24px;
+      height: 24px;
+      background: #333;
+      border: 1px solid #444;
+      border-radius: 50%;
+      color: #888;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      transition: left 0.2s;
+    }
+
+    .sidebar-toggle:hover {
+      background: #444;
+      color: #fff;
+    }
+
+    .sidebar-toggle.collapsed {
+      left: -4px;
+    }
+
+    .sidebar-toggle svg {
+      transition: transform 0.2s;
+    }
+
+    .sidebar-toggle.collapsed svg {
+      transform: rotate(180deg);
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid #333;
+      -webkit-app-region: drag;
+    }
+
+    .sidebar-header h1 {
+      font-size: 12px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .dir-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      color: #666;
+      -webkit-app-region: no-drag;
+    }
+
+    .dir-path {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dir-btn {
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      padding: 2px;
+      border-radius: 3px;
+    }
+
+    .dir-btn:hover {
+      background: #333;
+      color: #fff;
+    }
+
+    .session-list {
+      flex: 1;
+      overflow-y: auto;
+      list-style: none;
+      padding: 8px;
+    }
+
+    .session-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: #2a2a2a;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .session-item:hover {
+      background: #333;
+    }
+
+    .session-item.selected {
+      background: #3b3b3b;
+      border-left: 2px solid #4ade80;
+    }
+
+    .session-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .session-preview {
+      font-size: 11px;
+      color: #ccc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-meta {
+      font-size: 9px;
+      color: #666;
+      margin-top: 2px;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .session-project {
+      background: #3b3b3b;
+      padding: 1px 4px;
+      border-radius: 2px;
+      color: #888;
+    }
+
+    .session-count {
+      font-size: 10px;
+      background: #333;
+      padding: 2px 6px;
+      border-radius: 8px;
+      color: #888;
+    }
+
+    /* Main content - columns */
+    .main {
+      flex: 1;
+      display: flex;
+      overflow-x: auto;
+      padding: 16px;
+      gap: 16px;
+    }
+
+    .column {
+      width: 320px;
+      min-width: 320px;
+      background: #252525;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      max-height: 100%;
+    }
+
+    .column-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .column-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #ccc;
+    }
+
+    .column-project {
+      font-size: 10px;
+      color: #888;
+      background: #333;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .column-close {
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      line-height: 1;
+    }
+
+    .column-close:hover {
+      background: #333;
+      color: #fff;
+    }
+
+    .column-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .column-sound-btn {
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      line-height: 1;
+      position: relative;
+    }
+
+    .column-sound-btn:hover {
+      background: #333;
+      color: #fff;
+    }
+
+    .column-sound-btn.muted {
+      color: #ef4444;
+    }
+
+    .sound-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 8px 0;
+      min-width: 180px;
+      z-index: 100;
+      display: none;
+    }
+
+    .sound-menu.open {
+      display: block;
+    }
+
+    .sound-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: #ccc;
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+
+    .sound-menu-item:hover {
+      background: #333;
+    }
+
+    .sound-menu-item.active {
+      color: #4ade80;
+    }
+
+    .sound-menu-divider {
+      height: 1px;
+      background: #444;
+      margin: 4px 0;
+    }
+
+    .sound-file-name {
+      font-size: 9px;
+      color: #666;
+      padding: 4px 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .column-progress {
+      padding: 12px 16px;
+      border-bottom: 1px solid #333;
+    }
+
+    .progress-bar {
+      background: #333;
+      border-radius: 3px;
+      height: 4px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4ade80, #22c55e);
+      transition: width 0.3s ease;
+    }
+
+    .stats {
+      display: flex;
+      gap: 12px;
+      font-size: 10px;
+    }
+
+    .stat {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .stat-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .stat-dot.completed { background: #4ade80; }
+    .stat-dot.in-progress { background: #facc15; }
+    .stat-dot.pending { background: #666; }
+
+    .column-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 16px;
+    }
+
+    .todo-list {
+      list-style: none;
+    }
+
+    .todo-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #333;
+    }
+
+    .todo-item:last-child {
+      border-bottom: none;
+    }
+
+    .todo-status {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 2px;
+    }
+
+    .todo-status.completed {
+      background: #4ade80;
+      color: #000;
+    }
+
+    .todo-status.in_progress {
+      background: #facc15;
+      color: #000;
+      animation: pulse 1.5s infinite;
+    }
+
+    .todo-status.pending {
+      background: transparent;
+      border: 2px solid #666;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .todo-status svg {
+      width: 10px;
+      height: 10px;
+    }
+
+    .todo-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .todo-text {
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .todo-text.completed {
+      color: #888;
+      text-decoration: line-through;
+    }
+
+    .todo-text.in_progress {
+      color: #fff;
+      font-weight: 500;
+    }
+
+    .todo-active-form {
+      font-size: 10px;
+      color: #facc15;
+      margin-top: 2px;
+    }
+
+    /* Parallel tasks */
+    .parallel-section {
+      margin-bottom: 12px;
+    }
+
+    .parallel-label {
+      font-size: 9px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .parallel-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #333;
+    }
+
+    .parallel-tasks {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .parallel-task {
+      flex: 1;
+      min-width: 120px;
+      background: #2a2a2a;
+      border-radius: 6px;
+      padding: 10px;
+      border-left: 3px solid #facc15;
+    }
+
+    .parallel-task .todo-status {
+      width: 12px;
+      height: 12px;
+      margin-bottom: 6px;
+    }
+
+    .parallel-task .todo-text {
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .parallel-task .todo-active-form {
+      font-size: 9px;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #666;
+      padding: 40px 20px;
+      font-size: 12px;
+    }
+
+    /* Placeholder column */
+    .column-placeholder {
+      width: 320px;
+      min-width: 320px;
+      border: 2px dashed #333;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #555;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="drag-region"></div>
+  <div class="app">
+    <!-- Sidebar Toggle -->
+    <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M15 18l-6-6 6-6"></path>
+      </svg>
+    </button>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h1>Sessions</h1>
+        <div class="dir-bar">
+          <span class="dir-path" id="dir-path">~/.claude/todos</span>
+          <button class="dir-btn" id="change-dir-btn" title="Change directory">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
+          <button class="dir-btn" id="reset-dir-btn" title="Reset to default">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+              <path d="M3 3v5h5"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <ul class="session-list" id="session-list">
+        <li class="empty-state">Loading...</li>
+      </ul>
+    </div>
+
+    <!-- Main columns -->
+    <div class="main" id="main">
+      <div class="column-placeholder">
+        Click sessions to add columns
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const checkIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+      <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>`;
+
+    const spinnerIcon = `<svg viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="12" cy="12" r="3"></circle>
+    </svg>`;
+
+    // Track open columns and their state
+    const openColumns = new Map(); // path -> { element, completedCount }
+
+    // Audio
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playProgressSound() {
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+      oscillator.frequency.setValueAtTime(1108, audioCtx.currentTime + 0.1);
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + 0.2);
+    }
+
+    function playCompleteSound() {
+      const notes = [523, 659, 784, 1047];
+      notes.forEach((freq, i) => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.1);
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime + i * 0.1);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.1 + 0.3);
+        oscillator.start(audioCtx.currentTime + i * 0.1);
+        oscillator.stop(audioCtx.currentTime + i * 0.1 + 0.3);
+      });
+    }
+
+    // Cache for custom audio
+    const audioCache = new Map();
+
+    function playCustomSound(filePath) {
+      if (audioCache.has(filePath)) {
+        const audio = audioCache.get(filePath).cloneNode();
+        audio.volume = 0.5;
+        audio.play().catch(() => {});
+      } else {
+        const audio = new Audio('file://' + filePath);
+        audio.volume = 0.5;
+        audioCache.set(filePath, audio);
+        audio.play().catch(() => {});
+      }
+    }
+
+    function formatTime(date) {
+      const now = new Date();
+      const d = new Date(date);
+      const diff = now - d;
+      if (diff < 60000) return 'just now';
+      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+      return d.toLocaleDateString();
+    }
+
+    function renderSessions(sessions) {
+      const listEl = document.getElementById('session-list');
+
+      if (sessions.length === 0) {
+        listEl.innerHTML = '<li class="empty-state">No sessions found</li>';
+        return;
+      }
+
+      listEl.innerHTML = sessions.map(session => {
+        const isSelected = openColumns.has(session.path);
+        const projectBadge = session.projectName
+          ? `<span class="session-project">${session.projectName}</span>`
+          : '';
+        return `
+          <li class="session-item${isSelected ? ' selected' : ''}" data-path="${session.path}" data-project="${session.projectName || ''}">
+            <div class="session-info">
+              <div class="session-preview">${session.preview || 'No preview'}</div>
+              <div class="session-meta">
+                <span>${formatTime(session.mtime)}</span>
+                ${projectBadge}
+              </div>
+            </div>
+            <span class="session-count">${session.todoCount}</span>
+          </li>
+        `;
+      }).join('');
+
+      document.querySelectorAll('.session-item').forEach(item => {
+        item.addEventListener('click', () => toggleColumn(item.dataset.path, item.dataset.project));
+      });
+    }
+
+    // Sound settings storage
+    const soundSettings = JSON.parse(localStorage.getItem('soundSettings') || '{}');
+
+    function saveSoundSettings() {
+      localStorage.setItem('soundSettings', JSON.stringify(soundSettings));
+    }
+
+    function getSoundSetting(sessionPath) {
+      return soundSettings[sessionPath] || { enabled: true, type: 'default', customFile: null };
+    }
+
+    function setSoundSetting(sessionPath, setting) {
+      soundSettings[sessionPath] = setting;
+      saveSoundSettings();
+    }
+
+    function createColumn(sessionPath, projectName) {
+      const column = document.createElement('div');
+      column.className = 'column';
+      column.dataset.path = sessionPath;
+
+      const setting = getSoundSetting(sessionPath);
+      const soundIcon = setting.enabled
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`
+        : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
+
+      column.innerHTML = `
+        <div class="column-header">
+          <span class="column-project">${projectName || 'Unknown'}</span>
+          <div class="column-actions">
+            <div class="column-sound-btn${setting.enabled ? '' : ' muted'}" title="Sound settings">
+              ${soundIcon}
+              <div class="sound-menu">
+                <button class="sound-menu-item" data-action="toggle">
+                  ${setting.enabled ? 'Mute' : 'Unmute'}
+                </button>
+                <div class="sound-menu-divider"></div>
+                <button class="sound-menu-item${setting.type === 'default' ? ' active' : ''}" data-action="default">
+                  Default sound
+                </button>
+                <button class="sound-menu-item${setting.type === 'custom' ? ' active' : ''}" data-action="custom">
+                  Custom sound...
+                </button>
+                ${setting.customFile ? `<div class="sound-file-name">${setting.customFile.split('/').pop()}</div>` : ''}
+              </div>
+            </div>
+            <button class="column-close" title="Close">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="column-progress">
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: 0%"></div>
+          </div>
+          <div class="stats"></div>
+        </div>
+        <div class="column-content">
+          <ul class="todo-list"></ul>
+        </div>
+      `;
+
+      // Sound button click handler
+      const soundBtn = column.querySelector('.column-sound-btn');
+      const soundMenu = column.querySelector('.sound-menu');
+
+      soundBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Close other menus
+        document.querySelectorAll('.sound-menu.open').forEach(m => {
+          if (m !== soundMenu) m.classList.remove('open');
+        });
+        soundMenu.classList.toggle('open');
+      });
+
+      // Menu item handlers
+      column.querySelectorAll('.sound-menu-item').forEach(item => {
+        item.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const action = item.dataset.action;
+          const currentSetting = getSoundSetting(sessionPath);
+
+          if (action === 'toggle') {
+            currentSetting.enabled = !currentSetting.enabled;
+            setSoundSetting(sessionPath, currentSetting);
+            updateColumnSoundUI(column, sessionPath);
+          } else if (action === 'default') {
+            currentSetting.type = 'default';
+            currentSetting.customFile = null;
+            setSoundSetting(sessionPath, currentSetting);
+            updateColumnSoundUI(column, sessionPath);
+          } else if (action === 'custom') {
+            const filePath = await window.api.selectSoundFile();
+            if (filePath) {
+              currentSetting.type = 'custom';
+              currentSetting.customFile = filePath;
+              setSoundSetting(sessionPath, currentSetting);
+              updateColumnSoundUI(column, sessionPath);
+            }
+          }
+
+          soundMenu.classList.remove('open');
+        });
+      });
+
+      column.querySelector('.column-close').addEventListener('click', () => {
+        removeColumn(sessionPath);
+      });
+
+      return column;
+    }
+
+    function updateColumnSoundUI(column, sessionPath) {
+      const setting = getSoundSetting(sessionPath);
+      const soundBtn = column.querySelector('.column-sound-btn');
+      const soundIcon = setting.enabled
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`
+        : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
+
+      soundBtn.className = `column-sound-btn${setting.enabled ? '' : ' muted'}`;
+      soundBtn.innerHTML = `
+        ${soundIcon}
+        <div class="sound-menu">
+          <button class="sound-menu-item" data-action="toggle">
+            ${setting.enabled ? 'Mute' : 'Unmute'}
+          </button>
+          <div class="sound-menu-divider"></div>
+          <button class="sound-menu-item${setting.type === 'default' ? ' active' : ''}" data-action="default">
+            Default sound
+          </button>
+          <button class="sound-menu-item${setting.type === 'custom' ? ' active' : ''}" data-action="custom">
+            Custom sound...
+          </button>
+          ${setting.customFile ? `<div class="sound-file-name">${setting.customFile.split('/').pop()}</div>` : ''}
+        </div>
+      `;
+
+      // Re-attach event listeners
+      const soundMenu = soundBtn.querySelector('.sound-menu');
+      soundBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.sound-menu.open').forEach(m => {
+          if (m !== soundMenu) m.classList.remove('open');
+        });
+        soundMenu.classList.toggle('open');
+      });
+
+      soundBtn.querySelectorAll('.sound-menu-item').forEach(item => {
+        item.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const action = item.dataset.action;
+          const currentSetting = getSoundSetting(sessionPath);
+
+          if (action === 'toggle') {
+            currentSetting.enabled = !currentSetting.enabled;
+            setSoundSetting(sessionPath, currentSetting);
+            updateColumnSoundUI(column, sessionPath);
+          } else if (action === 'default') {
+            currentSetting.type = 'default';
+            currentSetting.customFile = null;
+            setSoundSetting(sessionPath, currentSetting);
+            updateColumnSoundUI(column, sessionPath);
+          } else if (action === 'custom') {
+            const filePath = await window.api.selectSoundFile();
+            if (filePath) {
+              currentSetting.type = 'custom';
+              currentSetting.customFile = filePath;
+              setSoundSetting(sessionPath, currentSetting);
+              updateColumnSoundUI(column, sessionPath);
+            }
+          }
+
+          soundMenu.classList.remove('open');
+        });
+      });
+    }
+
+    function toggleColumn(sessionPath, projectName) {
+      if (openColumns.has(sessionPath)) {
+        removeColumn(sessionPath);
+      } else {
+        addColumn(sessionPath, projectName);
+      }
+      updateSessionListSelection();
+    }
+
+    async function addColumn(sessionPath, projectName) {
+      const main = document.getElementById('main');
+
+      // Remove placeholder if exists
+      const placeholder = main.querySelector('.column-placeholder');
+      if (placeholder) placeholder.remove();
+
+      const column = createColumn(sessionPath, projectName);
+      main.appendChild(column);
+
+      openColumns.set(sessionPath, { element: column, completedCount: 0 });
+
+      // Load todos
+      const data = await window.api.selectSession(sessionPath);
+      updateColumnTodos(sessionPath, data, true);
+    }
+
+    function removeColumn(sessionPath) {
+      const columnData = openColumns.get(sessionPath);
+      if (columnData) {
+        columnData.element.remove();
+        openColumns.delete(sessionPath);
+      }
+
+      // Show placeholder if no columns
+      const main = document.getElementById('main');
+      if (openColumns.size === 0) {
+        main.innerHTML = '<div class="column-placeholder">Click sessions to add columns</div>';
+      }
+
+      updateSessionListSelection();
+    }
+
+    function updateSessionListSelection() {
+      document.querySelectorAll('.session-item').forEach(item => {
+        if (openColumns.has(item.dataset.path)) {
+          item.classList.add('selected');
+        } else {
+          item.classList.remove('selected');
+        }
+      });
+    }
+
+    function updateColumnTodos(sessionPath, data, isInitialLoad = false) {
+      const columnData = openColumns.get(sessionPath);
+      if (!columnData) return;
+
+      const column = columnData.element;
+      const { todos } = data;
+
+      const completed = todos.filter(t => t.status === 'completed').length;
+      const inProgress = todos.filter(t => t.status === 'in_progress').length;
+      const pending = todos.filter(t => t.status === 'pending').length;
+      const total = todos.length;
+
+      // Play sounds based on settings
+      if (!isInitialLoad && total > 0) {
+        if (completed > columnData.completedCount) {
+          const setting = getSoundSetting(sessionPath);
+          if (setting.enabled) {
+            const isComplete = completed === total && pending === 0 && inProgress === 0;
+            if (setting.type === 'custom' && setting.customFile) {
+              playCustomSound(setting.customFile);
+            } else {
+              if (isComplete) {
+                playCompleteSound();
+              } else {
+                playProgressSound();
+              }
+            }
+          }
+        }
+      }
+      columnData.completedCount = completed;
+
+      // Update progress
+      const percent = total > 0 ? (completed / total) * 100 : 0;
+      column.querySelector('.progress-fill').style.width = `${percent}%`;
+
+      column.querySelector('.stats').innerHTML = `
+        <div class="stat"><span class="stat-dot completed"></span><span>${completed}</span></div>
+        <div class="stat"><span class="stat-dot in-progress"></span><span>${inProgress}</span></div>
+        <div class="stat"><span class="stat-dot pending"></span><span>${pending}</span></div>
+      `;
+
+      // Update todos
+      const listEl = column.querySelector('.todo-list');
+      if (todos.length === 0) {
+        listEl.innerHTML = '<li class="empty-state">No todos</li>';
+        return;
+      }
+
+      // Separate parallel (in_progress) and sequential tasks
+      const inProgressTasks = todos.filter(t => t.status === 'in_progress');
+      const otherTasks = todos.filter(t => t.status !== 'in_progress');
+
+      let html = '';
+
+      // Render parallel tasks if more than 1
+      if (inProgressTasks.length > 1) {
+        html += `
+          <div class="parallel-section">
+            <div class="parallel-label">Running in parallel (${inProgressTasks.length})</div>
+            <div class="parallel-tasks">
+              ${inProgressTasks.map(todo => `
+                <div class="parallel-task">
+                  <div class="todo-status in_progress">${spinnerIcon}</div>
+                  <div class="todo-text in_progress">${todo.content}</div>
+                  ${todo.activeForm ? `<div class="todo-active-form">${todo.activeForm}...</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else if (inProgressTasks.length === 1) {
+        // Single in_progress - render normally
+        const todo = inProgressTasks[0];
+        html += `
+          <li class="todo-item">
+            <div class="todo-status in_progress">${spinnerIcon}</div>
+            <div class="todo-content">
+              <div class="todo-text in_progress">${todo.content}</div>
+              ${todo.activeForm ? `<div class="todo-active-form">${todo.activeForm}...</div>` : ''}
+            </div>
+          </li>
+        `;
+      }
+
+      // Render other tasks
+      html += otherTasks.map(todo => {
+        let statusIcon = '';
+        if (todo.status === 'completed') statusIcon = checkIcon;
+
+        return `
+          <li class="todo-item">
+            <div class="todo-status ${todo.status}">${statusIcon}</div>
+            <div class="todo-content">
+              <div class="todo-text ${todo.status}">${todo.content}</div>
+            </div>
+          </li>
+        `;
+      }).join('');
+
+      listEl.innerHTML = html;
+    }
+
+    function updateDirPath(dir) {
+      const pathEl = document.getElementById('dir-path');
+      pathEl.textContent = dir.replace(/^\/Users\/[^/]+/, '~');
+    }
+
+    // Initialize
+    // Track known sessions to detect new ones
+    let knownSessionPaths = new Set();
+
+    async function init() {
+      const dir = await window.api.getCurrentDir();
+      updateDirPath(dir);
+
+      const sessions = await window.api.getSessions();
+      // Initialize known sessions
+      sessions.forEach(s => knownSessionPaths.add(s.path));
+      renderSessions(sessions);
+    }
+
+    init();
+
+    // Event listeners
+    document.getElementById('sidebar-toggle').addEventListener('click', () => {
+      const sidebar = document.getElementById('sidebar');
+      const toggle = document.getElementById('sidebar-toggle');
+      sidebar.classList.toggle('collapsed');
+      toggle.classList.toggle('collapsed');
+    });
+
+    document.getElementById('change-dir-btn').addEventListener('click', async () => {
+      const result = await window.api.selectDirectory();
+      if (result) {
+        updateDirPath(result.dir);
+        renderSessions(result.sessions);
+      }
+    });
+
+    document.getElementById('reset-dir-btn').addEventListener('click', async () => {
+      const result = await window.api.resetToDefault();
+      updateDirPath(result.dir);
+      renderSessions(result.sessions);
+    });
+
+    // Close sound menu on outside click
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.sound-menu.open').forEach(m => m.classList.remove('open'));
+    });
+
+    // Listen for updates
+    window.api.onSessionsUpdated((sessions) => {
+      // Check for new sessions
+      sessions.forEach(session => {
+        if (!knownSessionPaths.has(session.path)) {
+          // New session detected - auto open column
+          if (knownSessionPaths.size > 0) { // Don't auto-open on initial load
+            addColumn(session.path, session.projectName);
+          }
+          knownSessionPaths.add(session.path);
+        }
+      });
+      renderSessions(sessions);
+    });
+
+    window.api.onTodosUpdated((data) => {
+      // Update all open columns that might be affected
+      openColumns.forEach((columnData, path) => {
+        window.api.getTodos(path).then(freshData => {
+          updateColumnTodos(path, freshData);
+        });
+      });
+    });
+  </script>
+</body>
+</html>
